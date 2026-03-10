@@ -1,4 +1,5 @@
 import "@/global.css";
+import { isOnboardingDone } from "@/lib/storage";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -32,10 +33,21 @@ export default function RootLayout() {
 
   const [insets, setInsets] = useState<EdgeInsets>(initialInsets);
   const [frame, setFrame] = useState<Rect>(initialFrame);
+  const [onboardingReady, setOnboardingReady] = useState(false);
 
   // Initialize Manus runtime for cookie injection from parent container
   useEffect(() => {
     initManusRuntime();
+  }, []);
+
+  // Check onboarding status on mount
+  useEffect(() => {
+    isOnboardingDone().then((done) => {
+      setOnboardingReady(true);
+      if (!done) {
+        // Will be redirected by onboarding screen
+      }
+    });
   }, []);
 
   const handleSafeAreaUpdate = useCallback((metrics: Metrics) => {
@@ -87,6 +99,9 @@ export default function RootLayout() {
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="onboarding" />
+            <Stack.Screen name="coach" />
+            <Stack.Screen name="shopping" />
             <Stack.Screen name="oauth/callback" />
           </Stack>
           <StatusBar style="auto" />
