@@ -1,39 +1,35 @@
-import { useState, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import {
   View,
   Text,
-  ScrollView,
-  TouchableOpacity,
   TextInput,
-  StyleSheet,
+  TouchableOpacity,
   FlatList,
-  ActivityIndicator,
+  StyleSheet,
   Platform,
+  ActivityIndicator,
+  ScrollView,
+  KeyboardAvoidingView,
   Alert,
 } from "react-native";
 import { router } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
+import { getUserProfile, saveToCollection } from "@/lib/storage";
 import { trpc } from "@/lib/trpc";
-import { loadUserProfile, loadFridgeIngredients, saveFridgeIngredients } from "@/lib/storage";
-import type { FridgeIngredient, ShoppingCategory } from "@/lib/types";
-import { SHOPPING_CATEGORY_LABELS, SHOPPING_CATEGORY_ICONS } from "@/lib/types";
 import * as Haptics from "expo-haptics";
-import { useEffect } from "react";
+import type { SavedRecipe } from "@/lib/types";
 
-const CATEGORIES: ShoppingCategory[] = ["proteins", "vegetables", "fruits", "starches", "grocery", "fresh"];
+// ─── Types locaux ────────────────────────────────────────────────────────────
 
-const SUGGESTED_INGREDIENTS: Record<ShoppingCategory, string[]> = {
-  proteins: ["Blanc de poulet", "Thon en boîte", "Œufs", "Saumon", "Steak haché", "Tofu", "Fromage blanc 0%", "Jambon blanc"],
-  vegetables: ["Épinards", "Brocoli", "Courgette", "Haricots verts", "Tomates", "Poivrons", "Champignons", "Salade"],
-  fruits: ["Banane", "Pomme", "Myrtilles", "Fraises", "Orange", "Avocat"],
-  starches: ["Riz", "Pâtes", "Patate douce", "Flocons d'avoine", "Pain complet", "Quinoa", "Lentilles"],
-  grocery: ["Huile d'olive", "Sauce soja", "Moutarde", "Épices", "Bouillon", "Conserves"],
-  fresh: ["Yaourt grec", "Lait", "Fromage", "Beurre", "Crème fraîche"],
-};
+interface LocalIngredient {
+  id: string;
+  name: string;
+  quantity: string;
+}
 
-interface GeneratedRecipe {
+interface FridgeRecipe {
   name: string;
   description: string;
   prepTime: number;
@@ -42,374 +38,517 @@ interface GeneratedRecipe {
   macros: { calories: number; protein: number; carbs: number; fat: number };
 }
 
+type Screen = "add" | "list" | "recipes" | "recipe_detail";
+
+// ─── Écran principal ─────────────────────────────────────────────────────────
+
 export default function FridgeScreen() {
   const colors = useColors();
-  const [ingredients, setIngredients] = useState<FridgeIngredient[]>([]);
-  const [newIngredient, setNewIngredient] = useState("");
-  const [newQuantity, setNewQuantity] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<ShoppingCategory>("proteins");
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [generatedRecipes, setGeneratedRecipes] = useState<GeneratedRecipe[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [activeTab, setActiveTab] = useState<"fridge" | "recipes">("fridge");
 
-  useEffect(() => {
-    loadFridgeIngredients().then((saved) => {
-      if (saved) setIngredients(saved);
-    });
-  }, []);
+  const [screen, setScreen] = useState<Screen>("add");
+  const [ingredientName, setIngredientName] = useState("");
+  const [ingredientQty, setIngredientQty] = useState("");
+  const quantityRef = useRef<TextInput>(null);
 
-  const saveIngredients = async (updated: FridgeIngredient[]) => {
-    setIngredients(updated);
-    await saveFridgeIngredients(updated);
-  };
+  const [ingredients, setIngredients] = useState<LocalIngredient[]>([]);
+  const [recipes, setRecipes] = useState<FridgeRecipe[]>([]);
+  const [selectedRecipe, setSelectedRecipe] = useState<FridgeRecipe | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [savedIds, setSavedIds] = useState<Record<string, "to_try" | "favorites">>({});
 
-  const addIngredient = async (name: string, qty?: string) => {
-    if (!name.trim()) return;
-    const newItem: FridgeIngredient = {
-      id: Date.now().toString(),
-      name: name.trim(),
-      quantity: qty?.trim() || undefined,
-      category: selectedCategory,
-      addedAt: new Date().toISOString(),
+  const generateFridgeRecipes = trpc.nutrition.generateFridgeRecipes.useMutation();
+
+  const handleAddIngredient = useCallback(() => {
+    const name = ingredientName.trim();
+    if (!name) return;
+    const qty = ingredientQty.trim();
+    const newItem: LocalIngredient = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      name,
+      quantity: qty || "qté libre",
     };
-    await saveIngredients([...ingredients, newItem]);
-    setNewIngredient("");
-    setNewQuantity("");
+    setIngredients((prev) => [...prev, newItem]);
+    setIngredientName("");
+    setIngredientQty("");
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [ingredientName, ingredientQty]);
+
+  const handleRemoveIngredient = (id: string) => {
+    setIngredients((prev) => prev.filter((i) => i.id !== id));
   };
 
-  const removeIngredient = async (id: string) => {
-    await saveIngredients(ingredients.filter((i) => i.id !== id));
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-
-  const clearAll = () => {
-    Alert.alert("Vider le frigo", "Supprimer tous les ingrédients ?", [
-      { text: "Annuler", style: "cancel" },
-      { text: "Vider", style: "destructive", onPress: () => saveIngredients([]) },
-    ]);
-  };
-
-  const generateRecipes = trpc.nutrition.generateFridgeRecipes.useMutation({
-    onSuccess: (data) => {
-      setGeneratedRecipes(data.recipes);
-      setActiveTab("recipes");
-      setIsGenerating(false);
-      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    },
-    onError: () => {
-      setIsGenerating(false);
-      Alert.alert("Erreur", "Impossible de générer les recettes. Réessaie.");
-    },
-  });
-
-  const handleGenerateRecipes = async () => {
-    if (ingredients.length === 0) {
-      Alert.alert("Frigo vide", "Ajoute des ingrédients avant de générer des recettes.");
-      return;
+  const handleGenerateRecipes = useCallback(async () => {
+    if (ingredients.length === 0) return;
+    setLoading(true);
+    setScreen("recipes");
+    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      const profile = await getUserProfile();
+      const ingredientStrings = ingredients.map(
+        (i) => `${i.name}${i.quantity !== "qté libre" ? ` (${i.quantity})` : ""}`
+      );
+      const result = await generateFridgeRecipes.mutateAsync({
+        ingredients: ingredientStrings,
+        targetProtein: profile?.targetProtein,
+        targetCarbs: profile?.targetCarbs,
+        targetFat: profile?.targetFat,
+        goal: profile?.goal,
+      });
+      setRecipes(result.recipes ?? []);
+    } catch (e) {
+      console.error(e);
+      setRecipes([]);
+    } finally {
+      setLoading(false);
     }
-    setIsGenerating(true);
-    const profile = await loadUserProfile();
-    const ingredientNames = ingredients.map((i) => `${i.name}${i.quantity ? ` (${i.quantity})` : ""}`);
-    generateRecipes.mutate({
-      ingredients: ingredientNames,
-      targetProtein: profile?.targetProtein,
-      targetCarbs: profile?.targetCarbs,
-      targetFat: profile?.targetFat,
-      goal: profile?.goal,
-    });
-  };
+  }, [ingredients, generateFridgeRecipes]);
 
-  const groupedIngredients = CATEGORIES.reduce((acc, cat) => {
-    const items = ingredients.filter((i) => i.category === cat);
-    if (items.length > 0) acc[cat] = items;
-    return acc;
-  }, {} as Record<ShoppingCategory, FridgeIngredient[]>);
+  const handleSaveRecipe = async (recipe: FridgeRecipe, collection: "to_try" | "favorites") => {
+    const recipeId = `fridge_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const saved: SavedRecipe = {
+      id: recipeId,
+      name: recipe.name,
+      description: recipe.description,
+      prepTime: recipe.prepTime,
+      ingredients: recipe.ingredients,
+      steps: recipe.steps,
+      macros: recipe.macros,
+      savedAt: new Date().toISOString(),
+      collection,
+      source: "fridge",
+    };
+    await saveToCollection(saved);
+    setSavedIds((prev) => ({ ...prev, [recipe.name]: collection }));
+    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert(
+      collection === "to_try" ? "✅ Ajoutée à essayer !" : "⭐ Ajoutée aux favoris !",
+      `"${recipe.name}" a été sauvegardée dans ${collection === "to_try" ? "Mes recettes à essayer" : "Mes recettes préférées"}.`,
+      [{ text: "OK" }]
+    );
+  };
 
   const styles = createStyles(colors);
+
+  const handleBack = () => {
+    if (screen === "recipe_detail") setScreen("recipes");
+    else if (screen === "recipes") setScreen("list");
+    else if (screen === "list") setScreen("add");
+    else router.back();
+  };
 
   return (
     <ScreenContainer containerClassName="bg-background">
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <IconSymbol name="chevron.left" size={22} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>🧊 Mon Frigo</Text>
-        {ingredients.length > 0 && (
-          <TouchableOpacity onPress={clearAll} style={styles.clearBtn}>
-            <Text style={[styles.clearText, { color: colors.error }]}>Vider</Text>
-          </TouchableOpacity>
-        )}
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>
+          {screen === "add" && "🧊 Mon Frigo"}
+          {screen === "list" && `🧊 Mes ingrédients (${ingredients.length})`}
+          {screen === "recipes" && "🍳 5 Recettes suggérées"}
+          {screen === "recipe_detail" && "📋 Recette"}
+        </Text>
+        <View style={{ width: 32 }} />
       </View>
 
-      {/* Tabs */}
-      <View style={[styles.tabs, { borderBottomColor: colors.border }]}>
-        {(["fridge", "recipes"] as const).map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tab, activeTab === tab && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
-            onPress={() => setActiveTab(tab)}
-          >
-            <Text style={[styles.tabText, { color: activeTab === tab ? colors.primary : colors.muted }]}>
-              {tab === "fridge" ? `🧊 Ingrédients (${ingredients.length})` : "🍽️ Recettes générées"}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {/* ── Saisie ingrédient ── */}
+      {screen === "add" && (
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <ScrollView contentContainerStyle={styles.addContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <View style={[styles.infoCard, { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}>
+              <Text style={[styles.infoTitle, { color: colors.primary }]}>🧊 Qu'est-ce qu'il y a dans ton frigo ?</Text>
+              <Text style={[styles.infoText, { color: colors.foreground }]}>
+                Saisis tes ingrédients un par un avec leur quantité. Ensuite, l'IA te proposera 5 recettes adaptées à ce que tu as !
+              </Text>
+            </View>
 
-      {activeTab === "fridge" ? (
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {/* Add ingredient */}
-          <View style={[styles.addCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.addTitle, { color: colors.foreground }]}>Ajouter un ingrédient</Text>
+            <View style={[styles.inputCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.inputLabel, { color: colors.foreground }]}>Ingrédient</Text>
+              <TextInput
+                style={[styles.textInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                placeholder="Ex: Poulet, Riz, Brocoli..."
+                placeholderTextColor={colors.muted}
+                value={ingredientName}
+                onChangeText={setIngredientName}
+                returnKeyType="next"
+                onSubmitEditing={() => quantityRef.current?.focus()}
+                autoCapitalize="words"
+              />
+              <Text style={[styles.inputLabel, { color: colors.foreground, marginTop: 12 }]}>Quantité (optionnel)</Text>
+              <TextInput
+                ref={quantityRef}
+                style={[styles.textInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                placeholder="Ex: 200g, 3 unités, 1 boîte..."
+                placeholderTextColor={colors.muted}
+                value={ingredientQty}
+                onChangeText={setIngredientQty}
+                returnKeyType="done"
+                onSubmitEditing={handleAddIngredient}
+              />
+              <TouchableOpacity
+                style={[styles.okBtn, { backgroundColor: ingredientName.trim() ? colors.primary : colors.border }]}
+                onPress={handleAddIngredient}
+                disabled={!ingredientName.trim()}
+              >
+                <Text style={[styles.okBtnText, { color: ingredientName.trim() ? "#fff" : colors.muted }]}>
+                  ✓ OK — Ajouter
+                </Text>
+              </TouchableOpacity>
+            </View>
 
-            {/* Category selector */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
-              {CATEGORIES.map((cat) => (
-                <TouchableOpacity
-                  key={cat}
-                  style={[
-                    styles.categoryChip,
-                    { backgroundColor: selectedCategory === cat ? colors.primary : colors.background, borderColor: selectedCategory === cat ? colors.primary : colors.border },
-                  ]}
-                  onPress={() => {
-                    setSelectedCategory(cat);
-                    setShowSuggestions(true);
-                  }}
-                >
-                  <Text style={styles.categoryChipEmoji}>{SHOPPING_CATEGORY_ICONS[cat]}</Text>
-                  <Text style={[styles.categoryChipText, { color: selectedCategory === cat ? "#fff" : colors.foreground }]}>
-                    {SHOPPING_CATEGORY_LABELS[cat]}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {/* Suggestions */}
-            {showSuggestions && (
-              <View style={styles.suggestions}>
-                <Text style={[styles.suggestionsTitle, { color: colors.muted }]}>Suggestions :</Text>
-                <View style={styles.suggestionsGrid}>
-                  {SUGGESTED_INGREDIENTS[selectedCategory].map((s) => (
-                    <TouchableOpacity
-                      key={s}
-                      style={[styles.suggestionChip, { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}
-                      onPress={() => addIngredient(s)}
-                    >
-                      <Text style={[styles.suggestionText, { color: colors.primary }]}>+ {s}</Text>
+            {ingredients.length > 0 && (
+              <View style={styles.addedSection}>
+                <Text style={[styles.addedTitle, { color: colors.foreground }]}>
+                  Ingrédients ajoutés ({ingredients.length})
+                </Text>
+                {ingredients.map((item) => (
+                  <View key={item.id} style={[styles.addedItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={styles.addedEmoji}>🥗</Text>
+                    <View style={styles.addedInfo}>
+                      <Text style={[styles.addedName, { color: colors.foreground }]}>{item.name}</Text>
+                      <Text style={[styles.addedQty, { color: colors.muted }]}>{item.quantity}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => handleRemoveIngredient(item.id)} style={styles.removeBtn}>
+                      <IconSymbol name="xmark" size={14} color={colors.error} />
                     </TouchableOpacity>
-                  ))}
-                </View>
+                  </View>
+                ))}
               </View>
             )}
 
-            {/* Manual input */}
-            <View style={styles.inputRow}>
-              <TextInput
-                style={[styles.nameInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.background }]}
-                placeholder="Nom de l'ingrédient"
-                placeholderTextColor={colors.muted}
-                value={newIngredient}
-                onChangeText={setNewIngredient}
-                returnKeyType="done"
-              />
-              <TextInput
-                style={[styles.qtyInput, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.background }]}
-                placeholder="Qté (opt.)"
-                placeholderTextColor={colors.muted}
-                value={newQuantity}
-                onChangeText={setNewQuantity}
-                returnKeyType="done"
-              />
+            {ingredients.length > 0 && (
               <TouchableOpacity
-                style={[styles.addBtn, { backgroundColor: colors.primary }]}
-                onPress={() => addIngredient(newIngredient, newQuantity)}
+                style={[styles.continueBtn, { backgroundColor: colors.primary }]}
+                onPress={() => setScreen("list")}
               >
-                <IconSymbol name="plus" size={20} color="#fff" />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Ingredients list */}
-          {Object.keys(groupedIngredients).length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyEmoji}>🧊</Text>
-              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Frigo vide</Text>
-              <Text style={[styles.emptyText, { color: colors.muted }]}>
-                Ajoute les ingrédients que tu as chez toi pour que l'IA te propose des recettes adaptées à tes macros.
-              </Text>
-            </View>
-          ) : (
-            Object.entries(groupedIngredients).map(([cat, items]) => (
-              <View key={cat} style={styles.categorySection}>
-                <Text style={[styles.categorySectionTitle, { color: colors.muted }]}>
-                  {SHOPPING_CATEGORY_ICONS[cat as ShoppingCategory]} {SHOPPING_CATEGORY_LABELS[cat as ShoppingCategory]}
+                <Text style={styles.continueBtnText}>
+                  Voir ma liste ({ingredients.length} ingrédient{ingredients.length > 1 ? "s" : ""}) →
                 </Text>
-                {items.map((item) => (
-                  <View key={item.id} style={[styles.ingredientRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <View style={styles.ingredientInfo}>
-                      <Text style={[styles.ingredientName, { color: colors.foreground }]}>{item.name}</Text>
-                      {item.quantity && (
-                        <Text style={[styles.ingredientQty, { color: colors.muted }]}>{item.quantity}</Text>
-                      )}
-                    </View>
-                    <TouchableOpacity onPress={() => removeIngredient(item.id)} style={styles.removeBtn}>
-                      <IconSymbol name="xmark" size={16} color={colors.muted} />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            ))
-          )}
+              </TouchableOpacity>
+            )}
 
-          {/* Generate button */}
-          {ingredients.length > 0 && (
+            <View style={{ height: 40 }} />
+          </ScrollView>
+        </KeyboardAvoidingView>
+      )}
+
+      {/* ── Liste des ingrédients ── */}
+      {screen === "list" && (
+        <View style={{ flex: 1 }}>
+          <FlatList
+            data={ingredients}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            ListHeaderComponent={
+              <View>
+                <View style={[styles.listSummary, { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}>
+                  <Text style={[styles.listSummaryTitle, { color: colors.primary }]}>
+                    🧊 {ingredients.length} ingrédient{ingredients.length > 1 ? "s" : ""} dans ton frigo
+                  </Text>
+                  <Text style={[styles.listSummaryText, { color: colors.foreground }]}>
+                    Vérifie ta liste et clique sur "Créer 5 recettes" pour que l'IA te propose des idées !
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.addMoreBtn, { borderColor: colors.primary }]}
+                  onPress={() => setScreen("add")}
+                >
+                  <IconSymbol name="plus" size={16} color={colors.primary} />
+                  <Text style={[styles.addMoreText, { color: colors.primary }]}>Ajouter un ingrédient</Text>
+                </TouchableOpacity>
+              </View>
+            }
+            renderItem={({ item }) => (
+              <View style={[styles.listItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={styles.listItemEmoji}>🥗</Text>
+                <View style={styles.listItemInfo}>
+                  <Text style={[styles.listItemName, { color: colors.foreground }]}>{item.name}</Text>
+                  <Text style={[styles.listItemQty, { color: colors.muted }]}>{item.quantity}</Text>
+                </View>
+                <TouchableOpacity onPress={() => handleRemoveIngredient(item.id)}>
+                  <IconSymbol name="xmark.circle.fill" size={20} color={colors.error} />
+                </TouchableOpacity>
+              </View>
+            )}
+            ListFooterComponent={<View style={{ height: 120 }} />}
+          />
+          <View style={[styles.generateBtnContainer, { backgroundColor: colors.background }]}>
             <TouchableOpacity
               style={[styles.generateBtn, { backgroundColor: colors.primary }]}
               onPress={handleGenerateRecipes}
-              disabled={isGenerating}
             >
-              {isGenerating ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <>
-                  <Text style={styles.generateBtnText}>✨ Générer des recettes avec mon frigo</Text>
-                  <Text style={[styles.generateBtnSub, { color: "rgba(255,255,255,0.8)" }]}>
-                    {ingredients.length} ingrédient{ingredients.length > 1 ? "s" : ""} · Adapté à tes macros
-                  </Text>
-                </>
-              )}
+              <Text style={styles.generateBtnEmoji}>🍳</Text>
+              <Text style={styles.generateBtnText}>Créer 5 recettes avec mes ingrédients</Text>
             </TouchableOpacity>
-          )}
-        </ScrollView>
-      ) : (
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {generatedRecipes.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyEmoji}>🍽️</Text>
-              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Aucune recette générée</Text>
-              <Text style={[styles.emptyText, { color: colors.muted }]}>
-                Ajoute des ingrédients dans ton frigo et génère des recettes adaptées à tes macros.
+          </View>
+        </View>
+      )}
+
+      {/* ── Recettes générées ── */}
+      {screen === "recipes" && (
+        <View style={{ flex: 1 }}>
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={[styles.loadingText, { color: colors.foreground }]}>
+                L'IA crée 5 recettes avec tes ingrédients...
               </Text>
-              <TouchableOpacity
-                style={[styles.switchTabBtn, { backgroundColor: colors.primaryLight }]}
-                onPress={() => setActiveTab("fridge")}
-              >
-                <Text style={[styles.switchTabText, { color: colors.primary }]}>Aller au frigo →</Text>
+              <Text style={[styles.loadingSubtext, { color: colors.muted }]}>
+                Cela prend environ 10-15 secondes
+              </Text>
+            </View>
+          ) : recipes.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyEmoji}>😕</Text>
+              <Text style={[styles.emptyText, { color: colors.foreground }]}>Aucune recette générée</Text>
+              <TouchableOpacity style={[styles.retryBtn, { backgroundColor: colors.primary }]} onPress={handleGenerateRecipes}>
+                <Text style={styles.retryBtnText}>Réessayer</Text>
               </TouchableOpacity>
             </View>
           ) : (
-            generatedRecipes.map((recipe, index) => (
-              <View key={index} style={[styles.recipeCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={styles.recipeHeader}>
-                  <Text style={[styles.recipeName, { color: colors.foreground }]}>{recipe.name}</Text>
-                  <View style={[styles.prepTimeBadge, { backgroundColor: colors.primaryLight }]}>
-                    <Text style={[styles.prepTimeText, { color: colors.primary }]}>⏱ {recipe.prepTime} min</Text>
-                  </View>
-                </View>
-                <Text style={[styles.recipeDesc, { color: colors.muted }]}>{recipe.description}</Text>
-
-                {/* Macros */}
-                <View style={styles.recipeMacros}>
-                  {[
-                    { label: "Kcal", value: recipe.macros.calories, color: colors.primary },
-                    { label: "P", value: recipe.macros.protein, color: "#9B7FD4", unit: "g" },
-                    { label: "G", value: recipe.macros.carbs, color: "#6EC6A0", unit: "g" },
-                    { label: "L", value: recipe.macros.fat, color: "#F5A623", unit: "g" },
-                  ].map((m) => (
-                    <View key={m.label} style={[styles.recipeMacroItem, { backgroundColor: colors.background }]}>
-                      <Text style={[styles.recipeMacroValue, { color: m.color }]}>{m.value}{m.unit || ""}</Text>
-                      <Text style={[styles.recipeMacroLabel, { color: colors.muted }]}>{m.label}</Text>
+            <FlatList
+              data={recipes}
+              keyExtractor={(_, i) => `recipe_${i}`}
+              contentContainerStyle={styles.recipesContent}
+              ListHeaderComponent={
+                <Text style={[styles.recipesHeader, { color: colors.muted }]}>
+                  {recipes.length} recette{recipes.length > 1 ? "s" : ""} créée{recipes.length > 1 ? "s" : ""} avec tes ingrédients
+                </Text>
+              }
+              renderItem={({ item, index }) => {
+                const isSaved = savedIds[item.name];
+                return (
+                  <TouchableOpacity
+                    style={[styles.recipeCard, { backgroundColor: colors.surface, borderColor: isSaved ? colors.primary : colors.border }]}
+                    onPress={() => { setSelectedRecipe(item); setScreen("recipe_detail"); }}
+                  >
+                    <View style={styles.recipeCardHeader}>
+                      <View style={[styles.recipeNumber, { backgroundColor: colors.primary }]}>
+                        <Text style={styles.recipeNumberText}>{index + 1}</Text>
+                      </View>
+                      <View style={styles.recipeTitleBlock}>
+                        <Text style={[styles.recipeCardName, { color: colors.foreground }]}>{item.name}</Text>
+                        <Text style={[styles.recipeCardDesc, { color: colors.muted }]} numberOfLines={2}>{item.description}</Text>
+                      </View>
                     </View>
-                  ))}
-                </View>
-
-                {/* Ingredients */}
-                <Text style={[styles.recipeSection, { color: colors.foreground }]}>Ingrédients :</Text>
-                {recipe.ingredients.map((ing, i) => (
-                  <Text key={i} style={[styles.recipeIngredient, { color: colors.muted }]}>
-                    • {ing.quantity} {ing.name}
-                  </Text>
-                ))}
-
-                {/* Steps */}
-                <Text style={[styles.recipeSection, { color: colors.foreground }]}>Préparation :</Text>
-                {recipe.steps.map((step, i) => (
-                  <View key={i} style={styles.recipeStep}>
-                    <View style={[styles.stepNumber, { backgroundColor: colors.primary }]}>
-                      <Text style={styles.stepNumberText}>{i + 1}</Text>
+                    <View style={styles.recipeMacros}>
+                      {[
+                        { label: "kcal", value: item.macros.calories, color: colors.primary },
+                        { label: "P", value: item.macros.protein, color: "#9B7FD4" },
+                        { label: "G", value: item.macros.carbs, color: "#6EC6A0" },
+                        { label: "L", value: item.macros.fat, color: "#F5A623" },
+                      ].map((m) => (
+                        <View key={m.label} style={[styles.macroChip, { backgroundColor: m.color + "22" }]}>
+                          <Text style={[styles.macroChipValue, { color: m.color }]}>{m.value}</Text>
+                          <Text style={[styles.macroChipLabel, { color: m.color }]}>{m.label}</Text>
+                        </View>
+                      ))}
+                      <Text style={[styles.prepTime, { color: colors.muted }]}>⏱ {item.prepTime} min</Text>
                     </View>
-                    <Text style={[styles.stepText, { color: colors.foreground }]}>{step}</Text>
-                  </View>
-                ))}
-              </View>
-            ))
+                    {isSaved ? (
+                      <View style={[styles.savedBadge, { backgroundColor: colors.primaryLight }]}>
+                        <Text style={[styles.savedBadgeText, { color: colors.primary }]}>
+                          {isSaved === "to_try" ? "✅ Ajoutée à essayer" : "⭐ Ajoutée aux favoris"}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.saveButtons}>
+                        <TouchableOpacity
+                          style={[styles.saveBtn, { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}
+                          onPress={() => handleSaveRecipe(item, "to_try")}
+                        >
+                          <Text style={[styles.saveBtnText, { color: colors.primary }]}>✅ À essayer</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.saveBtn, { backgroundColor: "#F5A62322", borderColor: "#F5A623" }]}
+                          onPress={() => handleSaveRecipe(item, "favorites")}
+                        >
+                          <Text style={[styles.saveBtnText, { color: "#F5A623" }]}>⭐ Favoris</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              }}
+              ListFooterComponent={<View style={{ height: 40 }} />}
+            />
           )}
+        </View>
+      )}
+
+      {/* ── Détail recette ── */}
+      {screen === "recipe_detail" && selectedRecipe && (
+        <ScrollView contentContainerStyle={styles.detailContent} showsVerticalScrollIndicator={false}>
+          <Text style={[styles.detailName, { color: colors.foreground }]}>{selectedRecipe.name}</Text>
+          <Text style={[styles.detailDesc, { color: colors.muted }]}>{selectedRecipe.description}</Text>
+
+          <View style={[styles.detailMacrosCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.detailSectionTitle, { color: colors.foreground }]}>Valeurs nutritionnelles</Text>
+            <View style={styles.detailMacrosRow}>
+              {[
+                { label: "Calories", value: `${selectedRecipe.macros.calories} kcal`, color: colors.primary },
+                { label: "Protéines", value: `${selectedRecipe.macros.protein}g`, color: "#9B7FD4" },
+                { label: "Glucides", value: `${selectedRecipe.macros.carbs}g`, color: "#6EC6A0" },
+                { label: "Lipides", value: `${selectedRecipe.macros.fat}g`, color: "#F5A623" },
+              ].map((m) => (
+                <View key={m.label} style={[styles.detailMacroItem, { backgroundColor: m.color + "22" }]}>
+                  <Text style={[styles.detailMacroValue, { color: m.color }]}>{m.value}</Text>
+                  <Text style={[styles.detailMacroLabel, { color: colors.muted }]}>{m.label}</Text>
+                </View>
+              ))}
+            </View>
+            <Text style={[styles.detailPrepTime, { color: colors.muted }]}>⏱ Préparation : {selectedRecipe.prepTime} min</Text>
+          </View>
+
+          <View style={[styles.detailSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.detailSectionTitle, { color: colors.foreground }]}>🛒 Ingrédients</Text>
+            {selectedRecipe.ingredients.map((ing, i) => (
+              <View key={i} style={styles.detailIngredient}>
+                <Text style={[styles.detailIngredientDot, { color: colors.primary }]}>•</Text>
+                <Text style={[styles.detailIngredientText, { color: colors.foreground }]}>
+                  <Text style={{ fontWeight: "700" }}>{ing.quantity}</Text> {ing.name}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={[styles.detailSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.detailSectionTitle, { color: colors.foreground }]}>👨‍🍳 Préparation</Text>
+            {selectedRecipe.steps.map((step, i) => (
+              <View key={i} style={styles.detailStep}>
+                <View style={[styles.stepNumber, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.stepNumberText}>{i + 1}</Text>
+                </View>
+                <Text style={[styles.stepText, { color: colors.foreground }]}>{step}</Text>
+              </View>
+            ))}
+          </View>
+
+          {savedIds[selectedRecipe.name] ? (
+            <View style={[styles.savedBadgeLarge, { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}>
+              <Text style={[styles.savedBadgeLargeText, { color: colors.primary }]}>
+                {savedIds[selectedRecipe.name] === "to_try" ? "✅ Ajoutée à Mes recettes à essayer" : "⭐ Ajoutée à Mes recettes préférées"}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.detailSaveButtons}>
+              <TouchableOpacity
+                style={[styles.detailSaveBtn, { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}
+                onPress={() => handleSaveRecipe(selectedRecipe, "to_try")}
+              >
+                <Text style={[styles.detailSaveBtnText, { color: colors.primary }]}>✅ Ajouter à "Mes recettes à essayer"</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.detailSaveBtn, { backgroundColor: "#F5A62322", borderColor: "#F5A623" }]}
+                onPress={() => handleSaveRecipe(selectedRecipe, "favorites")}
+              >
+                <Text style={[styles.detailSaveBtnText, { color: "#F5A623" }]}>⭐ Ajouter à "Mes recettes préférées"</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <View style={{ height: 40 }} />
         </ScrollView>
       )}
     </ScreenContainer>
   );
 }
 
+// ─── Styles ──────────────────────────────────────────────────────────────────
+
 function createStyles(colors: ReturnType<typeof useColors>) {
   return StyleSheet.create({
     header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, gap: 12 },
     backBtn: { padding: 4 },
-    headerTitle: { flex: 1, fontSize: 20, fontWeight: "700" },
-    clearBtn: { padding: 4 },
-    clearText: { fontSize: 14, fontWeight: "600" },
-    tabs: { flexDirection: "row", borderBottomWidth: 1, marginHorizontal: 16 },
-    tab: { flex: 1, paddingVertical: 12, alignItems: "center" },
-    tabText: { fontSize: 13, fontWeight: "600" },
-    content: { padding: 16, gap: 16, paddingBottom: 40 },
-    addCard: { padding: 16, borderRadius: 16, borderWidth: 1, gap: 12 },
-    addTitle: { fontSize: 16, fontWeight: "700" },
-    categoryScroll: { marginHorizontal: -4 },
-    categoryChip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, marginHorizontal: 4 },
-    categoryChipEmoji: { fontSize: 16 },
-    categoryChipText: { fontSize: 12, fontWeight: "600" },
-    suggestions: { gap: 8 },
-    suggestionsTitle: { fontSize: 12, fontWeight: "600" },
-    suggestionsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-    suggestionChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
-    suggestionText: { fontSize: 12, fontWeight: "600" },
-    inputRow: { flexDirection: "row", gap: 8, alignItems: "center" },
-    nameInput: { flex: 1, borderWidth: 1.5, borderRadius: 10, padding: 10, fontSize: 14, height: 44 },
-    qtyInput: { width: 80, borderWidth: 1.5, borderRadius: 10, padding: 10, fontSize: 14, height: 44 },
-    addBtn: { width: 44, height: 44, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-    emptyState: { alignItems: "center", paddingVertical: 40, gap: 12 },
-    emptyEmoji: { fontSize: 48 },
-    emptyTitle: { fontSize: 18, fontWeight: "700" },
-    emptyText: { fontSize: 14, textAlign: "center", lineHeight: 20 },
-    categorySection: { gap: 8 },
-    categorySectionTitle: { fontSize: 13, fontWeight: "700", paddingLeft: 4 },
-    ingredientRow: { flexDirection: "row", alignItems: "center", padding: 12, borderRadius: 12, borderWidth: 1 },
-    ingredientInfo: { flex: 1, gap: 2 },
-    ingredientName: { fontSize: 15, fontWeight: "600" },
-    ingredientQty: { fontSize: 12 },
+    headerTitle: { flex: 1, fontSize: 18, fontWeight: "700", textAlign: "center" },
+
+    addContent: { padding: 16, gap: 16 },
+    infoCard: { padding: 14, borderRadius: 14, borderWidth: 1.5, gap: 6 },
+    infoTitle: { fontSize: 15, fontWeight: "700" },
+    infoText: { fontSize: 13, lineHeight: 19 },
+    inputCard: { padding: 16, borderRadius: 16, borderWidth: 1, gap: 4 },
+    inputLabel: { fontSize: 13, fontWeight: "600", marginBottom: 4 },
+    textInput: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
+    okBtn: { marginTop: 16, paddingVertical: 14, borderRadius: 14, alignItems: "center" },
+    okBtnText: { fontSize: 16, fontWeight: "700" },
+    addedSection: { gap: 8 },
+    addedTitle: { fontSize: 15, fontWeight: "700" },
+    addedItem: { flexDirection: "row", alignItems: "center", padding: 12, borderRadius: 12, borderWidth: 1, gap: 10 },
+    addedEmoji: { fontSize: 20 },
+    addedInfo: { flex: 1 },
+    addedName: { fontSize: 14, fontWeight: "600" },
+    addedQty: { fontSize: 12 },
     removeBtn: { padding: 4 },
-    generateBtn: { padding: 20, borderRadius: 16, alignItems: "center", gap: 4 },
-    generateBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
-    generateBtnSub: { fontSize: 12 },
-    switchTabBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, marginTop: 8 },
-    switchTabText: { fontSize: 14, fontWeight: "700" },
-    recipeCard: { padding: 16, borderRadius: 16, borderWidth: 1, gap: 10 },
-    recipeHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 },
-    recipeName: { flex: 1, fontSize: 17, fontWeight: "700", lineHeight: 22 },
-    prepTimeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-    prepTimeText: { fontSize: 12, fontWeight: "600" },
-    recipeDesc: { fontSize: 13, lineHeight: 18 },
-    recipeMacros: { flexDirection: "row", gap: 8 },
-    recipeMacroItem: { flex: 1, alignItems: "center", padding: 8, borderRadius: 10 },
-    recipeMacroValue: { fontSize: 15, fontWeight: "800" },
-    recipeMacroLabel: { fontSize: 10, marginTop: 2 },
-    recipeSection: { fontSize: 14, fontWeight: "700", marginTop: 4 },
-    recipeIngredient: { fontSize: 13, lineHeight: 20, paddingLeft: 4 },
-    recipeStep: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
-    stepNumber: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", marginTop: 1 },
-    stepNumberText: { color: "#fff", fontSize: 11, fontWeight: "700" },
-    stepText: { flex: 1, fontSize: 13, lineHeight: 19 },
+    continueBtn: { paddingVertical: 16, borderRadius: 16, alignItems: "center" },
+    continueBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+
+    listContent: { padding: 16, gap: 10 },
+    listSummary: { padding: 14, borderRadius: 14, borderWidth: 1.5, gap: 6, marginBottom: 12 },
+    listSummaryTitle: { fontSize: 15, fontWeight: "700" },
+    listSummaryText: { fontSize: 13, lineHeight: 18 },
+    addMoreBtn: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1.5, borderStyle: "dashed", justifyContent: "center", marginBottom: 8 },
+    addMoreText: { fontSize: 14, fontWeight: "600" },
+    listItem: { flexDirection: "row", alignItems: "center", padding: 14, borderRadius: 14, borderWidth: 1, gap: 12 },
+    listItemEmoji: { fontSize: 22 },
+    listItemInfo: { flex: 1 },
+    listItemName: { fontSize: 15, fontWeight: "600" },
+    listItemQty: { fontSize: 12, marginTop: 2 },
+    generateBtnContainer: { paddingHorizontal: 16, paddingVertical: 12 },
+    generateBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 18, borderRadius: 18 },
+    generateBtnEmoji: { fontSize: 22 },
+    generateBtnText: { color: "#fff", fontSize: 16, fontWeight: "800" },
+
+    loadingContainer: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16, padding: 32 },
+    loadingText: { fontSize: 16, fontWeight: "600", textAlign: "center" },
+    loadingSubtext: { fontSize: 13, textAlign: "center" },
+    emptyContainer: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16 },
+    emptyEmoji: { fontSize: 48 },
+    emptyText: { fontSize: 16, fontWeight: "600" },
+    retryBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
+    retryBtnText: { color: "#fff", fontWeight: "700" },
+    recipesContent: { padding: 16, gap: 14 },
+    recipesHeader: { fontSize: 13, marginBottom: 4, textAlign: "center" },
+    recipeCard: { borderRadius: 18, borderWidth: 1.5, padding: 16, gap: 12 },
+    recipeCardHeader: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
+    recipeNumber: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+    recipeNumberText: { color: "#fff", fontSize: 15, fontWeight: "800" },
+    recipeTitleBlock: { flex: 1 },
+    recipeCardName: { fontSize: 16, fontWeight: "700" },
+    recipeCardDesc: { fontSize: 13, lineHeight: 18, marginTop: 2 },
+    recipeMacros: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
+    macroChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignItems: "center" },
+    macroChipValue: { fontSize: 13, fontWeight: "700" },
+    macroChipLabel: { fontSize: 10 },
+    prepTime: { fontSize: 12, marginLeft: "auto" },
+    saveButtons: { flexDirection: "row", gap: 8 },
+    saveBtn: { flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 1.5, alignItems: "center" },
+    saveBtnText: { fontSize: 13, fontWeight: "700" },
+    savedBadge: { paddingVertical: 8, borderRadius: 10, alignItems: "center" },
+    savedBadgeText: { fontSize: 13, fontWeight: "700" },
+
+    detailContent: { padding: 16, gap: 16 },
+    detailName: { fontSize: 24, fontWeight: "800" },
+    detailDesc: { fontSize: 14, lineHeight: 20 },
+    detailMacrosCard: { borderRadius: 16, borderWidth: 1, padding: 16, gap: 12 },
+    detailSectionTitle: { fontSize: 16, fontWeight: "700" },
+    detailMacrosRow: { flexDirection: "row", gap: 8 },
+    detailMacroItem: { flex: 1, padding: 10, borderRadius: 12, alignItems: "center", gap: 2 },
+    detailMacroValue: { fontSize: 15, fontWeight: "800" },
+    detailMacroLabel: { fontSize: 10 },
+    detailPrepTime: { fontSize: 13 },
+    detailSection: { borderRadius: 16, borderWidth: 1, padding: 16, gap: 10 },
+    detailIngredient: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
+    detailIngredientDot: { fontSize: 16, lineHeight: 22 },
+    detailIngredientText: { flex: 1, fontSize: 14, lineHeight: 22 },
+    detailStep: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
+    stepNumber: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", marginTop: 2 },
+    stepNumberText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+    stepText: { flex: 1, fontSize: 14, lineHeight: 21 },
+    detailSaveButtons: { gap: 10 },
+    detailSaveBtn: { paddingVertical: 14, borderRadius: 14, borderWidth: 1.5, alignItems: "center" },
+    detailSaveBtnText: { fontSize: 15, fontWeight: "700" },
+    savedBadgeLarge: { paddingVertical: 14, borderRadius: 14, borderWidth: 1.5, alignItems: "center" },
+    savedBadgeLargeText: { fontSize: 15, fontWeight: "700" },
   });
 }

@@ -16,7 +16,7 @@ import type { SupplementType, SupplementLog } from "@/lib/types";
 import * as Haptics from "expo-haptics";
 import { getTodayDate } from "@/lib/nutrition";
 
-// ─── Données compléments selon Coach Julie ──────────────────────────────────
+// ─── Données compléments sportifs ──────────────────────────────────────────
 
 interface SupplementInfo {
   type: SupplementType;
@@ -183,10 +183,10 @@ export default function SupplementsScreen() {
         {/* Source info */}
         <View style={[styles.sourceCard, { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}>
           <Text style={[styles.sourceTitle, { color: colors.primary }]}>
-            📋 Protocole Coach Julie CrossFit
+            📋 Compléments recommandés pour les sportifs
           </Text>
           <Text style={[styles.sourceText, { color: colors.foreground }]}>
-            Sélection basée sur les recommandations de la coach, classées par priorité selon les preuves scientifiques et l'utilité pour les sportifs CrossFit.
+            Sélection classée par priorité selon les preuves scientifiques et l'utilité pour les sportifs de CrossFit et sports de force.
           </Text>
         </View>
 
@@ -292,7 +292,7 @@ export default function SupplementsScreen() {
         <View style={[styles.disclaimer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.disclaimerTitle, { color: colors.foreground }]}>ℹ️ Important</Text>
           <Text style={[styles.disclaimerText, { color: colors.muted }]}>
-            Ces recommandations sont à titre informatif et basées sur les conseils de la coach Julie. Consulte un professionnel de santé avant de commencer tout protocole de supplémentation, notamment si tu as des pathologies ou prends des médicaments.
+            Ces recommandations sont à titre informatif et basées sur les données scientifiques actuelles en nutrition sportive. Consulte un professionnel de santé avant de commencer tout protocole de supplémentation, notamment si tu as des pathologies ou prends des médicaments.
           </Text>
         </View>
       </ScrollView>

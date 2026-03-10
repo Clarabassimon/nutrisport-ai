@@ -82,3 +82,16 @@
 - [x] Section Compléments alimentaires (Coach Julie) : Whey, Oméga3, Vit D, Créatine, Glycine, Collagène, Ashwagandha
 - [x] Mise à jour du coach IA avec la méthodologie Coach Julie
 - [x] Dashboard mis à jour avec grille 6 accès rapides (Frigo, Menus, Compléments)
+
+## Améliorations v2.1
+
+- [x] Suppression de toutes les références à la "Coach Julie" dans l'app
+- [x] Optimisation du prompt IA pour réduire le temps de génération des recettes
+- [x] Refonte du flux Frigo : saisie ingrédient + quantité → bouton OK → liste → "Créer 5 recettes"
+- [x] Génération de 5 recettes (au lieu de 3) avec macros détaillées
+- [x] Collection "Mes recettes à essayer" (sauvegarde depuis le Frigo)
+- [x] Collection "Mes recettes préférées" (sauvegarde depuis le Frigo)
+- [x] Écran "Mes Recettes" avec onglets À essayer / Préférées
+- [x] Possibilité de déplacer une recette d'une collection à l'autre
+- [x] Suppression de recettes depuis les collections
+- [x] Bouton "Mes Recettes" ajouté dans les accès rapides du dashboard

@@ -169,7 +169,7 @@ export default function OnboardingScreen() {
             </Text>
             <View style={styles.featureList}>
               {[
-                { icon: "🔥", text: "Calcul macros méthode CrossFit (Coach Julie)" },
+                { icon: "🔥", text: "Calcul macros méthode CrossFit optimisée" },
                 { icon: "📷", text: "Analyse de repas par photo IA" },
                 { icon: "🍽️", text: "Créateur de menus avec grammes CRU/cuit" },
                 { icon: "🧊", text: "Recettes selon tes ingrédients du frigo" },
@@ -430,7 +430,7 @@ export default function OnboardingScreen() {
                   <Text style={styles.methodEmoji}>⚡</Text>
                   <View>
                     <Text style={[styles.methodTitle, { color: colors.foreground }]}>Méthode CrossFit</Text>
-                    <Text style={[styles.methodSubtitle, { color: colors.muted }]}>Coach Julie — Ratio 40/30/30</Text>
+                    <Text style={[styles.methodSubtitle, { color: colors.muted }]}>Ratio 40/30/30 — Optimisée CrossFit</Text>
                   </View>
                 </View>
                 {macroMethod === "crossfit" && (
@@ -523,7 +523,7 @@ export default function OnboardingScreen() {
               Tout est prêt, {firstName || "Sportif"} !
             </Text>
             <Text style={[styles.subtitle, { color: colors.muted }]}>
-              Voici ton résumé nutritionnel basé sur la méthode {macroMethod === "crossfit" ? "CrossFit (Coach Julie)" : "Classique"}.
+              Voici ton résumé nutritionnel basé sur la méthode {macroMethod === "crossfit" ? "CrossFit" : "Classique"}.
             </Text>
             <View style={[styles.resultCard, { backgroundColor: colors.primary }]}>
               <Text style={styles.resultMainLabel}>

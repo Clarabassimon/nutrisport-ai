@@ -260,3 +260,27 @@ export interface SupplementLog {
   date: string; // YYYY-MM-DD
   taken: SupplementType[];
 }
+
+// ─────────────────────────────────────────────────────────────────
+// COLLECTIONS DE RECETTES
+// ─────────────────────────────────────────────────────────────────
+
+export type RecipeCollectionType = "to_try" | "favorites";
+
+export interface SavedRecipe {
+  id: string;
+  name: string;
+  description: string;
+  prepTime: number;
+  ingredients: Array<{ name: string; quantity: string }>;
+  steps: string[];
+  macros: MacroNutrients;
+  savedAt: string;
+  collection: RecipeCollectionType;
+  source: "fridge" | "ai" | "manual"; // d'où vient la recette
+}
+
+export interface RecipeCollections {
+  to_try: SavedRecipe[];
+  favorites: SavedRecipe[];
+}

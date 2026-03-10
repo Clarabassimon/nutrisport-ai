@@ -202,3 +202,48 @@ export async function saveSupplementLog(log: import("./types").SupplementLog): P
 // ── Alias for compatibility ───────────────────────────────────────────────────
 
 export const loadUserProfile = getUserProfile;
+
+// ── Recipe Collections ────────────────────────────────────────────────────────
+
+const RECIPE_COLLECTIONS_KEY = "nutrisport_recipe_collections";
+
+export async function loadRecipeCollections(): Promise<import("./types").RecipeCollections> {
+  const raw = await AsyncStorage.getItem(RECIPE_COLLECTIONS_KEY);
+  return raw ? JSON.parse(raw) : { to_try: [], favorites: [] };
+}
+
+export async function saveToCollection(
+  recipe: import("./types").SavedRecipe
+): Promise<void> {
+  const collections = await loadRecipeCollections();
+  const col = recipe.collection;
+  // Remove from both collections first (avoid duplicates)
+  collections.to_try = collections.to_try.filter((r) => r.id !== recipe.id);
+  collections.favorites = collections.favorites.filter((r) => r.id !== recipe.id);
+  // Add to target collection
+  collections[col].unshift(recipe);
+  await AsyncStorage.setItem(RECIPE_COLLECTIONS_KEY, JSON.stringify(collections));
+}
+
+export async function removeFromCollection(
+  recipeId: string,
+  collection: import("./types").RecipeCollectionType
+): Promise<void> {
+  const collections = await loadRecipeCollections();
+  collections[collection] = collections[collection].filter((r) => r.id !== recipeId);
+  await AsyncStorage.setItem(RECIPE_COLLECTIONS_KEY, JSON.stringify(collections));
+}
+
+export async function moveToCollection(
+  recipeId: string,
+  from: import("./types").RecipeCollectionType,
+  to: import("./types").RecipeCollectionType
+): Promise<void> {
+  const collections = await loadRecipeCollections();
+  const recipe = collections[from].find((r) => r.id === recipeId);
+  if (!recipe) return;
+  collections[from] = collections[from].filter((r) => r.id !== recipeId);
+  recipe.collection = to;
+  collections[to].unshift(recipe);
+  await AsyncStorage.setItem(RECIPE_COLLECTIONS_KEY, JSON.stringify(collections));
+}

@@ -253,7 +253,7 @@ Retourne un JSON: {"advice": "ton conseil personnalisé", "priority": "calories|
       }
     }),
 
-  // ── Generate recipes from fridge ingredients ──────────────────────────────────
+  // ── Generate recipes from fridge ingredients ──────────────────────────────────────────────
   generateFridgeRecipes: publicProcedure
     .input(
       z.object({
@@ -272,38 +272,19 @@ Retourne un JSON: {"advice": "ton conseil personnalisé", "priority": "calories|
         recomposition: "recomposition corporelle",
       };
 
+      const macroInfo = input.targetProtein
+        ? `Objectifs: P=${input.targetProtein}g G=${input.targetCarbs}g L=${input.targetFat}g (${goalLabels[input.goal ?? ""] ?? "sport"})`
+        : "";
+
       const response = await invokeLLM({
         messages: [
           {
             role: "system",
-            content: `Tu es un chef nutritionniste expert en nutrition sportive CrossFit. Tu crées des recettes healthy, rapides et délicieuses en utilisant uniquement les ingrédients disponibles.`,
+            content: `Chef nutritionniste sportif. Crée 5 recettes rapides et healthy avec les ingrédients donnés. Réponds en JSON uniquement.`,
           },
           {
             role: "user",
-            content: `Génère 3 recettes en utilisant UNIQUEMENT ces ingrédients disponibles dans le frigo:
-${input.ingredients.join(", ")}
-
-${input.targetProtein ? `Objectifs nutritionnels:
-- Protéines: ${input.targetProtein}g/jour
-- Glucides: ${input.targetCarbs}g/jour
-- Lipides: ${input.targetFat}g/jour
-- Objectif: ${goalLabels[input.goal ?? ""] ?? "équilibre"}` : ""}
-
-Retourne un JSON avec exactement cette structure:
-{
-  "recipes": [
-    {
-      "name": "Nom de la recette",
-      "description": "Description courte et appétissante",
-      "prepTime": nombre_en_minutes,
-      "ingredients": [{"name": "ingrédient", "quantity": "quantité précise en grammes ou unités"}],
-      "steps": ["étape 1", "étape 2"],
-      "macros": {"calories": nombre, "protein": nombre, "carbs": nombre, "fat": nombre}
-    }
-  ]
-}
-
-Important: utilise SEULEMENT les ingrédients listés. Les quantités doivent être en grammes (ex: 120g). Recettes simples, max 20 min.`,
+            content: `Ingrédients disponibles: ${input.ingredients.join(", ")}\n${macroInfo}\n\nGénère exactement 5 recettes. JSON:\n{"recipes":[{"name":"str","description":"str","prepTime":int,"ingredients":[{"name":"str","quantity":"Xg"}],"steps":["str"],"macros":{"calories":int,"protein":int,"carbs":int,"fat":int}}]}\n\nRègles: utilise SEULEMENT ces ingrédients, quantités en grammes, max 20 min, recettes variées (petit-déj, déj, dîner, collation, snack).`,
           },
         ],
         response_format: { type: "json_object" },

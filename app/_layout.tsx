@@ -105,6 +105,7 @@ export default function RootLayout() {
             <Stack.Screen name="fridge" />
             <Stack.Screen name="menu-builder" />
             <Stack.Screen name="supplements" />
+            <Stack.Screen name="my-recipes" />
             <Stack.Screen name="oauth/callback" />
           </Stack>
           <StatusBar style="auto" />

@@ -285,6 +285,7 @@ export default function DashboardScreen() {
             { emoji: "🛒", label: "Courses", route: "/shopping" },
             { emoji: "🧊", label: "Mon Frigo", route: "/fridge" },
             { emoji: "🍽️", label: "Mes Menus", route: "/menu-builder" },
+            { emoji: "📚", label: "Mes Recettes", route: "/my-recipes" },
             { emoji: "📓", label: "Journal", route: "/(tabs)/journal" },
             { emoji: "💊", label: "Compléments", route: "/supplements" },
           ].map((action) => (
