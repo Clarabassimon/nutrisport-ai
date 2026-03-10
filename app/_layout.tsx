@@ -102,6 +102,9 @@ export default function RootLayout() {
             <Stack.Screen name="onboarding" />
             <Stack.Screen name="coach" />
             <Stack.Screen name="shopping" />
+            <Stack.Screen name="fridge" />
+            <Stack.Screen name="menu-builder" />
+            <Stack.Screen name="supplements" />
             <Stack.Screen name="oauth/callback" />
           </Stack>
           <StatusBar style="auto" />

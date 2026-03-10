@@ -27,10 +27,12 @@ interface Message {
 }
 
 const QUICK_QUESTIONS = [
-  "Comment optimiser mes protéines ?",
-  "Que manger avant l'entraînement ?",
+  "Explique-moi la méthode CrossFit pour les macros",
+  "Que manger avant/après le CrossFit ?",
+  "Quels compléments me recommandes-tu ?",
+  "Comment calculer mes grammes en cru ?",
   "Comment améliorer ma récupération ?",
-  "Quels aliments pour la prise de masse ?",
+  "Que manger pour perdre du poids en CrossFit ?",
 ];
 
 export default function CoachScreen() {

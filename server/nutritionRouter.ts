@@ -253,6 +253,130 @@ Retourne un JSON: {"advice": "ton conseil personnalisé", "priority": "calories|
       }
     }),
 
+  // ── Generate recipes from fridge ingredients ──────────────────────────────────
+  generateFridgeRecipes: publicProcedure
+    .input(
+      z.object({
+        ingredients: z.array(z.string()),
+        targetProtein: z.number().optional(),
+        targetCarbs: z.number().optional(),
+        targetFat: z.number().optional(),
+        goal: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const goalLabels: Record<string, string> = {
+        weight_loss: "perte de poids",
+        maintenance: "maintien",
+        muscle_gain: "prise de masse musculaire",
+        recomposition: "recomposition corporelle",
+      };
+
+      const response = await invokeLLM({
+        messages: [
+          {
+            role: "system",
+            content: `Tu es un chef nutritionniste expert en nutrition sportive CrossFit. Tu crées des recettes healthy, rapides et délicieuses en utilisant uniquement les ingrédients disponibles.`,
+          },
+          {
+            role: "user",
+            content: `Génère 3 recettes en utilisant UNIQUEMENT ces ingrédients disponibles dans le frigo:
+${input.ingredients.join(", ")}
+
+${input.targetProtein ? `Objectifs nutritionnels:
+- Protéines: ${input.targetProtein}g/jour
+- Glucides: ${input.targetCarbs}g/jour
+- Lipides: ${input.targetFat}g/jour
+- Objectif: ${goalLabels[input.goal ?? ""] ?? "équilibre"}` : ""}
+
+Retourne un JSON avec exactement cette structure:
+{
+  "recipes": [
+    {
+      "name": "Nom de la recette",
+      "description": "Description courte et appétissante",
+      "prepTime": nombre_en_minutes,
+      "ingredients": [{"name": "ingrédient", "quantity": "quantité précise en grammes ou unités"}],
+      "steps": ["étape 1", "étape 2"],
+      "macros": {"calories": nombre, "protein": nombre, "carbs": nombre, "fat": nombre}
+    }
+  ]
+}
+
+Important: utilise SEULEMENT les ingrédients listés. Les quantités doivent être en grammes (ex: 120g). Recettes simples, max 20 min.`,
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const rawContent = response.choices[0]?.message?.content ?? "{}";
+      const content = typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent);
+      try {
+        const parsed = JSON.parse(content);
+        return { recipes: parsed.recipes ?? [] };
+      } catch {
+        return { recipes: [] };
+      }
+    }),
+
+  // ── Search food macros for custom menu ──────────────────────────────────────
+  searchFoodMacros: publicProcedure
+    .input(
+      z.object({
+        query: z.string(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const response = await invokeLLM({
+        messages: [
+          {
+            role: "system",
+            content: `Tu es une base de données nutritionnelle. Tu retournes les valeurs nutritionnelles précises pour 100g d'aliment CRU.`,
+          },
+          {
+            role: "user",
+            content: `Donne les valeurs nutritionnelles pour 100g CRU de: "${input.query}"
+
+Retourne un JSON avec exactement cette structure:
+{
+  "name": "nom normalisé de l'aliment",
+  "cookingKey": "riz|pates|quinoa|lentilles|pois_chiches|haricots|poulet|boeuf|porc|poisson|legumes|pomme_de_terre|patate_douce|flocons_avoine|null",
+  "category": "proteins|vegetables|fruits|starches|grocery|fresh",
+  "per100g": {
+    "calories": nombre,
+    "protein": nombre,
+    "carbs": nombre,
+    "fat": nombre
+  }
+}
+
+Si l'aliment ne cuit pas (ex: fromage blanc, yaourt, fruits), cookingKey = null.
+Sois précis et utilise des valeurs réelles de tables nutritionnelles.`,
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const rawContent = response.choices[0]?.message?.content ?? "{}";
+      const content = typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent);
+      try {
+        const parsed = JSON.parse(content);
+        return {
+          name: parsed.name ?? input.query,
+          cookingKey: parsed.cookingKey ?? null,
+          category: (parsed.category ?? "grocery") as import("../lib/types").ShoppingCategory,
+          per100g: parsed.per100g ?? { calories: 0, protein: 0, carbs: 0, fat: 0 },
+        };
+      } catch {
+        return {
+          name: input.query,
+          cookingKey: null,
+          category: "grocery" as import("../lib/types").ShoppingCategory,
+          per100g: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+        };
+      }
+    }),
+
   // ── Generate shopping list from recipes ─────────────────────────────────────
   generateShoppingList: publicProcedure
     .input(

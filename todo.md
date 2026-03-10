@@ -65,3 +65,20 @@
 - [x] Tous les écrans connectés dans le Stack root
 - [x] TypeScript 0 erreurs
 - [x] Checkpoint final
+
+## Adaptation Coach CrossFit Julie (PDFs)
+- [x] Refonte calcul macros : méthode CrossFit (lbs × NA) + méthode classique (g/kg PDC)
+- [x] Onboarding : choix de la méthode de calcul + affichage comparatif des 2 méthodes
+- [x] Profil : affichage des macros selon méthode choisie + explication Coach Julie
+- [x] Mise à jour lib/nutrition.ts avec les 2 formules CrossFit
+- [x] Frigo intelligent : écran de saisie des ingrédients disponibles
+- [x] Frigo intelligent : génération de recettes IA selon ingrédients frigo + macros restantes
+- [x] Créateur de menus : ajout d'ingrédients avec quantité en grammes CRU
+- [x] Créateur de menus : calcul automatique macros totales du repas
+- [x] Créateur de menus : affichage poids cuit estimé (coefficients par aliment)
+- [x] Créateur de menus : sauvegarde dans bibliothèque personnelle
+- [x] Base de données aliments avec macros pour 100g (protéines, glucides, lipides, calories)
+- [x] Coefficients de cuisson (riz ×2.5, pâtes ×2.2, viandes ×0.75, légumineuses ×2.5, légumes ×0.85)
+- [x] Section Compléments alimentaires (Coach Julie) : Whey, Oméga3, Vit D, Créatine, Glycine, Collagène, Ashwagandha
+- [x] Mise à jour du coach IA avec la méthodologie Coach Julie
+- [x] Dashboard mis à jour avec grille 6 accès rapides (Frigo, Menus, Compléments)

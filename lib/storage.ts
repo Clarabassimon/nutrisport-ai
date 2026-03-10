@@ -141,3 +141,64 @@ export async function removeRecipe(recipeId: string): Promise<void> {
 export async function clearAllData(): Promise<void> {
   await AsyncStorage.multiRemove(Object.values(KEYS));
 }
+
+// ── Fridge Ingredients ────────────────────────────────────────────────────────
+
+const FRIDGE_KEY = "nutrisport_fridge";
+const CUSTOM_MENUS_KEY = "nutrisport_custom_menus";
+const SUPPLEMENT_LOG_KEY = "nutrisport_supplement_log";
+
+export async function loadFridgeIngredients(): Promise<import("./types").FridgeIngredient[]> {
+  const raw = await AsyncStorage.getItem(FRIDGE_KEY);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export async function saveFridgeIngredients(
+  items: import("./types").FridgeIngredient[]
+): Promise<void> {
+  await AsyncStorage.setItem(FRIDGE_KEY, JSON.stringify(items));
+}
+
+// ── Custom Menus ──────────────────────────────────────────────────────────────
+
+export async function loadCustomMenus(): Promise<import("./types").CustomMenu[]> {
+  const raw = await AsyncStorage.getItem(CUSTOM_MENUS_KEY);
+  return raw ? JSON.parse(raw) : [];
+}
+
+export async function saveCustomMenu(menu: import("./types").CustomMenu): Promise<void> {
+  const menus = await loadCustomMenus();
+  const idx = menus.findIndex((m) => m.id === menu.id);
+  if (idx >= 0) {
+    menus[idx] = menu;
+  } else {
+    menus.push(menu);
+  }
+  await AsyncStorage.setItem(CUSTOM_MENUS_KEY, JSON.stringify(menus));
+}
+
+export async function deleteCustomMenu(menuId: string): Promise<void> {
+  const menus = await loadCustomMenus();
+  const filtered = menus.filter((m) => m.id !== menuId);
+  await AsyncStorage.setItem(CUSTOM_MENUS_KEY, JSON.stringify(filtered));
+}
+
+// ── Supplement Log ────────────────────────────────────────────────────────────
+
+export async function loadSupplementLog(
+  date: string
+): Promise<import("./types").SupplementLog | null> {
+  const raw = await AsyncStorage.getItem(`${SUPPLEMENT_LOG_KEY}_${date}`);
+  return raw ? JSON.parse(raw) : null;
+}
+
+export async function saveSupplementLog(log: import("./types").SupplementLog): Promise<void> {
+  await AsyncStorage.setItem(
+    `${SUPPLEMENT_LOG_KEY}_${log.date}`,
+    JSON.stringify(log)
+  );
+}
+
+// ── Alias for compatibility ───────────────────────────────────────────────────
+
+export const loadUserProfile = getUserProfile;

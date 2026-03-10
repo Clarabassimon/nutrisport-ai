@@ -279,31 +279,25 @@ export default function DashboardScreen() {
         </View>
 
         {/* Quick Actions */}
-        <View style={styles.quickActions}>
-          <TouchableOpacity
-            style={[styles.quickActionBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            // @ts-ignore
-            onPress={() => router.push("/coach")}
-          >
-            <Text style={styles.quickActionEmoji}>🧠</Text>
-            <Text style={[styles.quickActionText, { color: colors.foreground }]}>Coach IA</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.quickActionBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            // @ts-ignore
-            onPress={() => router.push("/shopping")}
-          >
-            <Text style={styles.quickActionEmoji}>🛒</Text>
-            <Text style={[styles.quickActionText, { color: colors.foreground }]}>Courses</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.quickActionBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            // @ts-ignore
-            onPress={() => router.push("/(tabs)/journal")}
-          >
-            <Text style={styles.quickActionEmoji}>📓</Text>
-            <Text style={[styles.quickActionText, { color: colors.foreground }]}>Journal</Text>
-          </TouchableOpacity>
+        <View style={styles.quickActionsGrid}>
+          {[
+            { emoji: "🧠", label: "Coach IA", route: "/coach" },
+            { emoji: "🛒", label: "Courses", route: "/shopping" },
+            { emoji: "🧊", label: "Mon Frigo", route: "/fridge" },
+            { emoji: "🍽️", label: "Mes Menus", route: "/menu-builder" },
+            { emoji: "📓", label: "Journal", route: "/(tabs)/journal" },
+            { emoji: "💊", label: "Compléments", route: "/supplements" },
+          ].map((action) => (
+            <TouchableOpacity
+              key={action.label}
+              style={[styles.quickActionBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              // @ts-ignore
+              onPress={() => router.push(action.route)}
+            >
+              <Text style={styles.quickActionEmoji}>{action.emoji}</Text>
+              <Text style={[styles.quickActionText, { color: colors.foreground }]}>{action.label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         {/* Coach Tip */}
@@ -585,8 +579,15 @@ function createStyles(colors: ReturnType<typeof useColors>) {
       gap: 10,
       marginBottom: 16,
     },
+    quickActionsGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      paddingHorizontal: 20,
+      gap: 10,
+      marginBottom: 16,
+    },
     quickActionBtn: {
-      flex: 1,
+      width: (SCREEN_WIDTH - 60) / 3,
       alignItems: "center",
       padding: 14,
       borderRadius: 18,
